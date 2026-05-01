@@ -32,6 +32,11 @@ jobs:
           cd client-test
           npm ci
 
+      - name: Run tests
+        run: |
+          cd client-test
+          npm test
+
       - name: Build application
         run: |
           cd client-test

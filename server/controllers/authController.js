@@ -1,11 +1,10 @@
 import jwt from "jsonwebtoken"
 import bcrypt from "bcryptjs";
-import crypto from "crypto"; // For generating OTP
+import crypto from "crypto";
 import { User } from "../models/User.js"
 import { sendOTPEmail, deleteConfirmationMail, sendResetPassEmail } from "../utils/emailService.js"
 import { isEmailValid } from "../utils/isEmailValid.js";
 import mongoose from "mongoose";
-// import { client } from "../utils/typesenseClient.js";
 import { warmupLeaderboardCache } from "../utils/leaderBoardCache.js";
 import auditService from "../services/auditService.js";
 import { getISTNow } from "../utils/timezone.js";
@@ -81,9 +80,11 @@ export const registerUser = async (req, res) => {
       return res.status(400).json({ error: "Username must start with letters and contain only lowercase letters, numbers, and underscores" });
     }
 
-    // Single query to check all unique constraints atomically within transaction
-    const session = await mongoose.startSession();
-    session.startTransaction();
+    let session = null;
+    if (process.env.NODE_ENV !== 'test') {
+        session = await mongoose.startSession();
+        session.startTransaction();
+    }
     
     try {
       const [existingUser, existingUsername, existingRegNo] = await Promise.all([
@@ -93,31 +94,35 @@ export const registerUser = async (req, res) => {
       ]);
 
       if (existingUser && existingUser.isVerified) {
-        await session.abortTransaction();
-        session.endSession();
+        if (session) {
+            await session.abortTransaction();
+            session.endSession();
+        }
         return res.status(400).json({ error: "Account already exists, please login" });
       }
 
       if (existingUsername && existingUsername.isVerified) {
-        await session.abortTransaction();
-        session.endSession();
+        if (session) {
+            await session.abortTransaction();
+            session.endSession();
+        }
         return res.status(400).json({ error: "Username already exists, please choose another" });
       }
 
       if (existingRegNo && existingRegNo.isVerified) {
-        await session.abortTransaction();
-        session.endSession();
+        if (session) {
+            await session.abortTransaction();
+            session.endSession();
+        }
         return res.status(400).json({ error: "Registration number already exists" });
       }
 
       const salt = await bcrypt.genSalt(10);
       const hashedPassword = await bcrypt.hash(password, salt);
 
-      // Generate a 6-digit OTP
       const otp = crypto.randomInt(100000, 999999).toString();
       const otpExpires = getISTNow().getTime() + 5 * 60 * 1000;
 
-      // Use upsert with atomic operation to prevent race conditions
       await User.findOneAndUpdate(
         { email: trimmedEmail },
         {
@@ -143,10 +148,11 @@ export const registerUser = async (req, res) => {
         }
       );
 
-      await session.commitTransaction();
-      session.endSession();
+      if (session) {
+          await session.commitTransaction();
+          session.endSession();
+      }
 
-      // Send OTP to user's email
       await sendOTPEmail(trimmedEmail, otp);
 
       auditService.authEvent('registration_otp_sent', {
@@ -166,10 +172,12 @@ export const registerUser = async (req, res) => {
       res.status(201).json({ message: "OTP sent to email. Verify to complete registration." });
       
     } catch (error) {
-      await session.abortTransaction();
-      session.endSession();
+      if (session) {
+          await session.abortTransaction();
+          session.endSession();
+      }
       
-      if (error.code === 11000) { // MongoDB duplicate key error
+      if (error.code === 11000) {
         const field = Object.keys(error.keyPattern || {})[0];
         const fieldName = field === 'username' ? 'Username' : 
                          field === 'RegistrationNumber' ? 'Registration number' : 'Email';

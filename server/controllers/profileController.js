@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from "uuid"
 import auditService from "../services/auditService.js"
 import userCacheService from "../services/userCacheService.js"
 import { formatISTDateString, isWithinTodayIST, isWithinYesterdayIST } from '../utils/timezone.js'
+import { updateRanks } from "../utils/leaderBoardCache.js";
 
 export const getUserProfile = async (req, res) => {
     try {

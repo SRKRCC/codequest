@@ -1,6 +1,6 @@
 import express from 'express';
 import { protect } from '../middleware/auth.js';
-import { challengeUpdateRateLimit } from '../middleware/rateLimiter.js';
+import { challengeUpdateRateLimit } from '../middleware/redisRateLimiter.js';
 import { 
     getChallenges, 
     getChallengeById, 

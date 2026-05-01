@@ -8,9 +8,8 @@ import auditService from "../services/auditService.js";
 import { formatISTDateString, isWithinTodayIST } from '../utils/timezone.js';
 export const leetcodeData = async (req, res) => {
   try {
-    const username = req.body.username; // Get username from request body
+    const username = req.body.username;
     const user = await User.findOne({ 'leetCode.username': username });
-    // console.log(req.body.username);
 
     if (!user) {
       return res.status(404).json({ error: "User not found" });
@@ -64,7 +63,6 @@ export const leetcodeData = async (req, res) => {
       });
     }
 
-    // Use atomic update with user ID instead of username lookup to prevent race conditions
     const updateResult = await User.updateOne(
       { _id: user._id }, 
       { 
@@ -83,7 +81,6 @@ export const leetcodeData = async (req, res) => {
       modified: updateResult.modifiedCount > 0
     });
   } catch (error) {
-    // console.error("LeetCode API Error:", error.message);
     return res.status(500).json({ error: `Failed to fetch data` });
   }
 };
@@ -105,7 +102,6 @@ export const geeksforgeeksData = async (req, res) => {
     const instituteRank = response.institute_rank || 0;
     const rating = response.rating || 0;
 
-    // Check if data actually changed before updating
     const hasChanged = 
       user.gfg.solved !== totalSolved || 
       user.gfg.rank !== instituteRank || 
@@ -119,7 +115,6 @@ export const geeksforgeeksData = async (req, res) => {
       });
     }
 
-    // Use atomic update with change detection
     const updateResult = await User.updateOne(
       { _id: user._id },
       {

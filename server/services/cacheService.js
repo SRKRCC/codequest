@@ -4,11 +4,9 @@ import auditService from './auditService.js';
 
 class CacheService {
     constructor() {
-        // Initialize Redis client
         this.redis = null;
         this.isRedisAvailable = false;
         
-        // Fallback in-memory cache
         this.memoryCache = new NodeCache({ 
             stdTTL: 300, // 5 minutes
             checkperiod: 60,
@@ -16,14 +14,15 @@ class CacheService {
             useClones: false
         });
         
-        this.initializeRedis();
-        this.setupMetrics();
+        if (process.env.NODE_ENV !== 'test') {
+            this.initializeRedis();
+            this.setupMetrics();
+        }
     }
 
     async initializeRedis() {
         try {
             if (process.env.REDIS_URL) {
-                // Parse Upstash Redis URL format: rediss://default_ro:token@host:port
                 const redisUrl = new URL(process.env.REDIS_URL);
                 const token = redisUrl.password;
                 const restUrl = `https://${redisUrl.hostname}`;
@@ -39,9 +38,8 @@ class CacheService {
                     }
                 });
                 
-                // Test Redis connection
                 await this.redis.ping();
-                this.isRedisAvailable = !isReadOnly; // Disable for read-only connections
+                this.isRedisAvailable = !isReadOnly;
                 
                 console.log(`Redis connected: ${redisUrl.hostname} (${isReadOnly ? 'read-only - using memory cache' : 'read-write'})`);
             }
@@ -52,7 +50,6 @@ class CacheService {
     }
 
     setupMetrics() {
-        // Track cache performance
         this.metrics = {
             hits: 0,
             misses: 0,
@@ -60,7 +57,6 @@ class CacheService {
             operations: 0
         };
         
-        // Log metrics every 100 operations
         setInterval(() => {
             if (this.metrics.operations > 0) {
                 const hitRate = (this.metrics.hits / (this.metrics.hits + this.metrics.misses)) * 100;
@@ -73,13 +69,11 @@ class CacheService {
                     redisAvailable: this.isRedisAvailable
                 });
                 
-                // Reset metrics
                 this.metrics = { hits: 0, misses: 0, errors: 0, operations: 0 };
             }
-        }, 5 * 60000); // Every 5 minutes
+        }, 5 * 60000);
     }
 
-    // Generate cache key with namespace
     getCacheKey(namespace, key) {
         return `codequest:${namespace}:${key}`;
     }
@@ -92,7 +86,6 @@ class CacheService {
         try {
             let value = null;
             
-            // Try Redis first only if available and connected
             if (this.isRedisAvailable && this.redis) {
                 try {
                     const redisValue = await this.redis.get(cacheKey);
@@ -102,14 +95,12 @@ class CacheService {
                         return value;
                     }
                 } catch (error) {
-                    // Redis connection lost, mark as unavailable
                     this.isRedisAvailable = false;
                     console.warn('Redis cache get failed:', error.message);
                     this.metrics.errors++;
                 }
             }
             
-            // Fallback to memory cache
             value = this.memoryCache.get(cacheKey);
             if (value !== undefined) {
                 this.metrics.hits++;
@@ -128,7 +119,6 @@ class CacheService {
         }
     }
 
-    // Set in cache with dual storage
     async set(namespace, key, value, ttl = 300) {
         const cacheKey = this.getCacheKey(namespace, key);
         this.metrics.operations++;
@@ -136,20 +126,16 @@ class CacheService {
         try {
             const serializedValue = JSON.stringify(value);
             
-            // Set in Redis only if available and connected
             if (this.isRedisAvailable && this.redis) {
                 try {
-                    // Quick connection check
                     await this.redis.set(cacheKey, serializedValue, { ex: ttl });
                 } catch (error) {
-                    // Redis connection lost, mark as unavailable
                     this.isRedisAvailable = false;
                     console.warn('Redis cache set failed:', error.message);
                     this.metrics.errors++;
                 }
             }
             
-            // Always set in memory cache as backup
             this.memoryCache.set(cacheKey, value, ttl);
             
         } catch (error) {
@@ -158,13 +144,11 @@ class CacheService {
         }
     }
 
-    // Delete from cache
     async del(namespace, key) {
         const cacheKey = this.getCacheKey(namespace, key);
         this.metrics.operations++;
 
         try {
-            // Delete from Redis
             if (this.isRedisAvailable) {
                 try {
                     await this.redis.del(cacheKey);
@@ -175,7 +159,6 @@ class CacheService {
                 }
             }
             
-            // Delete from memory cache
             this.memoryCache.del(cacheKey);
             auditService.cacheEvent('cache_memory_del', { namespace, key });
             
@@ -185,12 +168,10 @@ class CacheService {
         }
     }
 
-    // Clear namespace
     async clearNamespace(namespace) {
         this.metrics.operations++;
 
         try {
-            // Clear Redis namespace (if available)
             if (this.isRedisAvailable) {
                 try {
                     const pattern = this.getCacheKey(namespace, '*');
@@ -205,7 +186,6 @@ class CacheService {
                 }
             }
             
-            // Clear memory cache namespace
             const memoryKeys = this.memoryCache.keys().filter(key => key.startsWith(this.getCacheKey(namespace, '')));
             memoryKeys.forEach(key => this.memoryCache.del(key));
             auditService.cacheEvent('cache_memory_namespace_cleared', { namespace, keysDeleted: memoryKeys.length });
@@ -216,7 +196,6 @@ class CacheService {
         }
     }
 
-    // Get cache with automatic refresh
     async getOrSet(namespace, key, fetcher, ttl = 300) {
         let value = await this.get(namespace, key);
         
@@ -235,7 +214,6 @@ class CacheService {
         return value;
     }
 
-    // Health check
     async healthCheck() {
         const health = {
             redis: this.isRedisAvailable,
@@ -257,7 +235,6 @@ class CacheService {
         return health;
     }
 
-    // Get statistics
     getStats() {
         return {
             redis: {
@@ -269,11 +246,9 @@ class CacheService {
         };
     }
 
-    // Check if Redis is connected (regardless of read-only status)
     isRedisConnected() {
         return this.redis !== null;
     }
 }
 
-// Export singleton instance
 export default new CacheService();

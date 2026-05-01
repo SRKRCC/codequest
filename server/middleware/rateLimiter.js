@@ -44,7 +44,9 @@ const startCleanup = () => {
     }, RATE_LIMIT_WINDOW);
 };
 
-startCleanup();
+if (process.env.NODE_ENV !== 'test') {
+    startCleanup();
+}
 
 export const cleanupRateLimiter = () => {
     if (cleanupInterval) {

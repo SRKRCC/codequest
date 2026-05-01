@@ -18,13 +18,15 @@ import { startStreakCronJob } from './utils/streakResetJob.js';
 import { appLifecycle } from './utils/appLifecycle.js';
 import { globalErrorHandler } from './middleware/errorHandler.js';
 import { ensureDbConnection } from './lib/db.js';
+import jobQueue from './services/jobQueue.js';
+import { initializeEmailWorker } from './workers/emailWorker.js';
+import { initializeDataSyncWorker } from './workers/dataSyncWorker.js';
 dotenv.config();
 
 const app = express();
 
 app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }));
 
-// Security headers
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -56,7 +58,6 @@ app.use(express.urlencoded({ limit: '5mb', extended: false }));
 app.use(cookieParser());
 app.use(passport.initialize());
 
-// Global database connection middleware for all routes
 app.use(ensureDbConnection);
 
 
@@ -71,11 +72,17 @@ app.use('/api/stats', statsRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/search', typeSenseRoutes);
 
-startStreakCronJob();
-appLifecycle.initialize();
+if (process.env.NODE_ENV !== 'test') {
+    startStreakCronJob();
+    appLifecycle.initialize();
+    
+    jobQueue.initialize();
+    initializeEmailWorker();
+    initializeDataSyncWorker();
+}
 
-// Export cleanup function for server.js
 export const cleanup = async () => {
+    await jobQueue.shutdown();
     return appLifecycle.cleanup();
 };
 
@@ -120,7 +127,6 @@ app.get('/health', async (req, res) => {
   }
 });
 
-// 404 handler for unmatched routes
 app.use('*', (req, res, next) => {
   const error = new Error(`Route ${req.originalUrl} not found`);
   error.statusCode = 404;
@@ -128,7 +134,6 @@ app.use('*', (req, res, next) => {
   next(error);
 });
 
-// Global error handling middleware (must be last)
 app.use(globalErrorHandler);
 
 export default app;

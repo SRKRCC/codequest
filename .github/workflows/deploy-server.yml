@@ -25,6 +25,11 @@ jobs:
       run: |
         cd server
         npm ci
+
+    - name: Run tests
+      run: |
+        cd server
+        npm test
         
     - name: Clear serverless cache (if any v4 exists)
       run: |
